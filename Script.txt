@@ -1,0 +1,468 @@
+-- ==============================================
+-- ⚡ ZZXP V1 • SILENT AIM INDESTRUCTIBLE
+-- ✅ NUNCA FALLA — al morir, respawnear, matar, reiniciar
+-- ✅ Apuntado más preciso • Sin FOV • Sin límites
+-- ✅ Chams persistentes • Team Check • Anti-Kick
+-- ✅ Minimizar + Cerrar • Estilo limpio
+-- 👤 @unrandom_tk
+-- ==============================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+
+local LP = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local Mouse = LP:GetMouse()
+
+local ConnAim = nil
+local ConnChams = nil
+local ChamsCreados = {}
+local HookActivo = false
+
+-- ==============================================
+-- 🛡️ ANTI-KICK + PROTECCIÓN
+-- ==============================================
+pcall(function()
+	local mt = getrawmetatable(game)
+	local oldNamecall = mt.__namecall
+	setreadonly(mt, false)
+	mt.__namecall = newcclosure(function(self, ...)
+		local metodo = getnamecallmethod()
+		if metodo == "Kick" or metodo == "kick" then return nil end
+		return oldNamecall(self, ...)
+	end)
+	setreadonly(mt, true)
+end)
+
+-- ==============================================
+-- 🔧 INTERFAZ BASE
+-- ==============================================
+local parent
+pcall(function() parent = gethui() end)
+if not parent then pcall(function() parent = CoreGui end) end
+if not parent then parent = LP:WaitForChild("PlayerGui") end
+
+pcall(function()
+	for _, v in pairs(parent:GetChildren()) do
+		if v.Name == "ZZXPV1" then v:Destroy() end
+	end
+end)
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "ZZXPV1"
+Gui.ResetOnSpawn = false
+Gui.DisplayOrder = 999999
+Gui.Parent = parent
+
+-- ==============================================
+-- ⚙️ CONFIGURACIÓN
+-- ==============================================
+local S = {
+	SilentAim = false,
+	Chams = false,
+	TeamCheck = false,
+	TargetPart = "Head",
+	Minimizado = false,
+	CurrentTarget = nil,
+	ColorChams = Color3.fromRGB(100, 255, 150),
+	RainbowChams = true,
+}
+
+-- ==============================================
+-- 🎯 SILENT AIM — INDESTRUCTIBLE
+-- ==============================================
+local function ObtenerMejorTarget()
+	local mejorTarget = nil
+	local menorDistancia = math.huge
+	local centroPantallaX = Camera.ViewportSize.X / 2
+	local centroPantallaY = Camera.ViewportSize.Y / 2
+
+	for _, jugador in pairs(Players:GetPlayers()) do
+		if jugador == LP then continue end
+		if not jugador.Character then continue end
+
+		-- Team Check
+		if S.TeamCheck and jugador.Team and LP.Team and jugador.Team == LP.Team then continue end
+
+		local Humanoide = jugador.Character:FindFirstChild("Humanoid")
+		if not Humanoide or Humanoide.Health <= 0 then continue end
+
+		-- Buscar parte del cuerpo (con respaldo en cadena)
+		local ParteObjetivo = 
+			jugador.Character:FindFirstChild(S.TargetPart) or
+			jugador.Character:FindFirstChild("Head") or
+			jugador.Character:FindFirstChild("UpperTorso") or
+			jugador.Character:FindFirstChild("HumanoidRootPart")
+		if not ParteObjetivo then continue end
+
+		-- Verificar si está en pantalla
+		local PosicionEnPantalla, Visible = Camera:WorldToViewportPoint(ParteObjetivo.Position)
+		if not Visible then continue end
+
+		-- Calcular distancia al centro
+		local DistanciaAlCentro = math.sqrt(
+			(PosicionEnPantalla.X - centroPantallaX)^2 + 
+			(PosicionEnPantalla.Y - centroPantallaY)^2
+		)
+
+		if DistanciaAlCentro < menorDistancia then
+			menorDistancia = DistanciaAlCentro
+			mejorTarget = ParteObjetivo
+		end
+	end
+
+	return mejorTarget
+end
+
+-- 🔒 HOOK INDESTRUCTIBLE — se repara solo si se rompe
+local function RestaurarHook()
+	if HookActivo then return end
+	pcall(function()
+		local mt = getrawmetatable(Mouse)
+		local oldIndex = mt.__index
+		setreadonly(mt, false)
+		mt.__index = newcclosure(function(self, clave)
+			if S.SilentAim and S.CurrentTarget then
+				if clave == "Hit" then
+					return CFrame.new(S.CurrentTarget.Position)
+				end
+				if clave == "Target" then
+					return S.CurrentTarget
+				end
+			end
+			return oldIndex(self, clave)
+		end)
+		setreadonly(mt, true)
+		HookActivo = true
+	end)
+end
+
+-- Recuperar TODO al respawnear
+LP.CharacterAdded:Connect(function()
+	task.wait(0.3)
+	Mouse = LP:GetMouse()
+	HookActivo = false
+	RestaurarHook()
+end)
+
+-- Bucle principal
+local function BucleAim()
+	if not S.SilentAim then
+		S.CurrentTarget = nil
+		return
+	end
+	RestaurarHook() -- Repara el hook si se rompió
+	S.CurrentTarget = ObtenerMejorTarget()
+end
+
+-- ==============================================
+-- 🌈 CHAMS — PERSISTENTES SIEMPRE
+-- ==============================================
+local function CrearChams(Jugador)
+	if not Jugador.Character then return end
+	if ChamsCreados[Jugador] then
+		pcall(function() ChamsCreados[Jugador]:Destroy() end)
+	end
+	local Resaltado = Instance.new("Highlight")
+	Resaltado.Name = "ZZXP_Chams"
+	Resaltado.FillTransparency = 0.3
+	Resaltado.OutlineTransparency = 0
+	Resaltado.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	Resaltado.Parent = Jugador.Character
+	ChamsCreados[Jugador] = Resaltado
+end
+
+-- Recrear automáticamente al respawnear
+for _, Jugador in pairs(Players:GetPlayers()) do
+	Jugador.CharacterAdded:Connect(function()
+		task.wait(0.8)
+		if S.Chams then CrearChams(Jugador) end
+	end)
+end
+Players.PlayerAdded:Connect(function(Jugador)
+	Jugador.CharacterAdded:Connect(function()
+		task.wait(0.8)
+		if S.Chams then CrearChams(Jugador) end
+	end)
+end)
+
+local function AplicarChamsTodos()
+	for _, Jugador in pairs(Players:GetPlayers()) do
+		if Jugador ~= LP and Jugador.Character then
+			CrearChams(Jugador)
+		end
+	end
+end
+
+local function QuitarTodoChams()
+	for _, Resaltado in pairs(ChamsCreados) do
+		pcall(function() Resaltado:Destroy() end)
+	end
+	table.clear(ChamsCreados)
+end
+
+local function BucleChams()
+	if not S.Chams then return end
+	local ColorActual
+	if S.RainbowChams then
+		local t = tick() * 2
+		ColorActual = Color3.new(
+			math.sin(t)*0.5 + 0.5,
+			math.sin(t+2)*0.5 + 0.5,
+			math.sin(t+4)*0.5 + 0.5
+		)
+	else
+		ColorActual = S.ColorChams
+	end
+	for Jugador, Resaltado in pairs(ChamsCreados) do
+		if not Resaltado or not Resaltado.Parent then
+			CrearChams(Jugador)
+			Resaltado = ChamsCreados[Jugador]
+		end
+		if Resaltado then
+			Resaltado.FillColor = ColorActual
+			Resaltado.OutlineColor = ColorActual
+		end
+	end
+end
+
+Players.PlayerRemoving:Connect(function(Jugador)
+	ChamsCreados[Jugador] = nil
+end)
+
+-- ==============================================
+-- 📋 PANEL ZZXP V1
+-- ==============================================
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 290, 0, 370)
+Main.Position = UDim2.new(0.5, -145, 0.5, -185)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+Main.Active = true
+Main.Draggable = true
+Main.Parent = Gui
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 18)
+local Borde = Instance.new("UIStroke")
+Borde.Color = Color3.fromRGB(90, 100, 255)
+Borde.Thickness = 1.5
+Borde.Parent = Main
+
+-- Encabezado
+local Cabecera = Instance.new("Frame")
+Cabecera.Size = UDim2.new(1, 0, 0, 55)
+Cabecera.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+Cabecera.Parent = Main
+Instance.new("UICorner", Cabecera).CornerRadius = UDim.new(0, 18)
+
+local EtiquetaTitulo = Instance.new("TextLabel")
+EtiquetaTitulo.Size = UDim2.new(1, -80, 1, 0)
+EtiquetaTitulo.Position = UDim2.new(0, 15, 0, 0)
+EtiquetaTitulo.BackgroundTransparency = 1
+EtiquetaTitulo.Text = "⚡ ZZXP V1"
+EtiquetaTitulo.Font = Enum.Font.GothamBold
+EtiquetaTitulo.TextSize = 20
+EtiquetaTitulo.TextColor3 = Color3.fromRGB(100, 140, 255)
+EtiquetaTitulo.TextXAlignment = Enum.TextXAlignment.Left
+EtiquetaTitulo.Parent = Cabecera
+
+local EtiquetaAutor = Instance.new("TextLabel")
+EtiquetaAutor.Size = UDim2.new(1, -80, 0, 14)
+EtiquetaAutor.Position = UDim2.new(0, 15, 0.6, 0)
+EtiquetaAutor.BackgroundTransparency = 1
+EtiquetaAutor.Text = "@unrandom_tk • INDESTRUCTIBLE"
+EtiquetaAutor.Font = Enum.Font.Gotham
+EtiquetaAutor.TextSize = 10
+EtiquetaAutor.TextColor3 = Color3.fromRGB(120, 120, 150)
+EtiquetaAutor.TextXAlignment = Enum.TextXAlignment.Left
+EtiquetaAutor.Parent = Cabecera
+
+local BtnMinimizar = Instance.new("TextButton")
+BtnMinimizar.Size = UDim2.new(0, 32, 0, 32)
+BtnMinimizar.Position = UDim2.new(1, -74, 0, 11)
+BtnMinimizar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+BtnMinimizar.Text = "−"
+BtnMinimizar.Font = Enum.Font.GothamBold
+BtnMinimizar.TextSize = 20
+BtnMinimizar.TextColor3 = Color3.new(1,1,1)
+BtnMinimizar.Active = true
+BtnMinimizar.Parent = Cabecera
+Instance.new("UICorner", BtnMinimizar).CornerRadius = UDim.new(0, 10)
+
+local BtnCerrar = Instance.new("TextButton")
+BtnCerrar.Size = UDim2.new(0, 32, 0, 32)
+BtnCerrar.Position = UDim2.new(1, -38, 0, 11)
+BtnCerrar.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+BtnCerrar.Text = "✕"
+BtnCerrar.Font = Enum.Font.GothamBold
+BtnCerrar.TextSize = 14
+BtnCerrar.TextColor3 = Color3.new(1,1,1)
+BtnCerrar.Active = true
+BtnCerrar.Parent = Cabecera
+Instance.new("UICorner", BtnCerrar).CornerRadius = UDim.new(0, 10)
+
+local Contenido = Instance.new("Frame")
+Contenido.Size = UDim2.new(1, -24, 1, -70)
+Contenido.Position = UDim2.new(0, 12, 0, 58)
+Contenido.BackgroundTransparency = 1
+Contenido.Parent = Main
+
+local function BotonAlternar(texto, posicionY, activo)
+	local Btn = Instance.new("TextButton")
+	Btn.Size = UDim2.new(1, 0, 0, 44)
+	Btn.Position = UDim2.new(0, 0, 0, posicionY)
+	Btn.BackgroundColor3 = activo and Color3.fromRGB(80, 110, 255) or Color3.fromRGB(30, 30, 45)
+	Btn.Text = texto .. (activo and "  • ACTIVO" or "  • INACTIVO")
+	Btn.Font = Enum.Font.GothamBold
+	Btn.TextSize = 13
+	Btn.TextColor3 = Color3.new(1,1,1)
+	Btn.Active = true
+	Btn.Parent = Contenido
+	Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 12)
+	return Btn
+end
+
+local BtnAim = BotonAlternar("🎯 SILENT AIM", 0, false)
+local BtnChams = BotonAlternar("🌈 CHAMS", 52, false)
+local BtnEquipo = BotonAlternar("🛡️ NO APUNTAR A EQUIPO", 104, false)
+
+-- Cambiar parte del cuerpo
+local EtiquetaParte = Instance.new("TextLabel")
+EtiquetaParte.Size = UDim2.new(1, 0, 0, 20)
+EtiquetaParte.Position = UDim2.new(0, 0, 0, 165)
+EtiquetaParte.BackgroundTransparency = 1
+EtiquetaParte.Text = "🎯 Apuntar a: " .. S.TargetPart
+EtiquetaParte.Font = Enum.Font.GothamBold
+EtiquetaParte.TextSize = 12
+EtiquetaParte.TextColor3 = Color3.fromRGB(150, 170, 255)
+EtiquetaParte.Parent = Contenido
+
+local BtnParte = Instance.new("TextButton")
+BtnParte.Size = UDim2.new(1, 0, 0, 36)
+BtnParte.Position = UDim2.new(0, 0, 0, 190)
+BtnParte.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+BtnParte.Text = "Cambiar zona de impacto"
+BtnParte.Font = Enum.Font.GothamBold
+BtnParte.TextSize = 12
+BtnParte.TextColor3 = Color3.new(1,1,1)
+BtnParte.Active = true
+BtnParte.Parent = Contenido
+Instance.new("UICorner", BtnParte).CornerRadius = UDim.new(0, 12)
+
+-- Colores Chams
+local ListaColores = {
+	{nombre = "🌈 ARCOÍRIS", valor = nil},
+	{nombre = "🟢 VERDE", valor = Color3.fromRGB(80, 255, 120)},
+	{nombre = "🔵 AZUL", valor = Color3.fromRGB(80, 180, 255)},
+	{nombre = "🔴 ROJO", valor = Color3.fromRGB(255, 80, 80)},
+	{nombre = "⚪ BLANCO", valor = Color3.fromRGB(255, 255, 255)},
+}
+local IndiceColor = 1
+
+local EtiquetaColor = Instance.new("TextLabel")
+EtiquetaColor.Size = UDim2.new(1, 0, 0, 20)
+EtiquetaColor.Position = UDim2.new(0, 0, 0, 240)
+EtiquetaColor.BackgroundTransparency = 1
+EtiquetaColor.Text = "🌈 Color: " .. ListaColores[IndiceColor].nombre
+EtiquetaColor.Font = Enum.Font.GothamBold
+EtiquetaColor.TextSize = 11
+EtiquetaColor.TextColor3 = Color3.fromRGB(100, 255, 150)
+EtiquetaColor.Parent = Contenido
+
+local BtnColor = Instance.new("TextButton")
+BtnColor.Size = UDim2.new(1, 0, 0, 34)
+BtnColor.Position = UDim2.new(0, 0, 0, 262)
+BtnColor.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+BtnColor.Text = "Cambiar color"
+BtnColor.Font = Enum.Font.GothamBold
+BtnColor.TextSize = 12
+BtnColor.TextColor3 = Color3.new(1,1,1)
+BtnColor.Active = true
+BtnColor.Parent = Contenido
+Instance.new("UICorner", BtnColor).CornerRadius = UDim.new(0, 12)
+
+local EtiquetaEstado = Instance.new("TextLabel")
+EtiquetaEstado.Size = UDim2.new(1, 0, 0, 25)
+EtiquetaEstado.Position = UDim2.new(0, 0, 0, 310)
+EtiquetaEstado.BackgroundTransparency = 1
+EtiquetaEstado.Text = "✅ ZZXP V1 CARGADO • NUNCA FALLA"
+EtiquetaEstado.Font = Enum.Font.GothamBold
+EtiquetaEstado.TextSize = 11
+EtiquetaEstado.TextColor3 = Color3.fromRGB(80, 255, 120)
+EtiquetaEstado.Parent = Contenido
+
+-- ==============================================
+-- 🔘 CONEXIONES DE BOTONES
+-- ==============================================
+BtnAim.MouseButton1Click:Connect(function()
+	S.SilentAim = not S.SilentAim
+	BtnAim.BackgroundColor3 = S.SilentAim and Color3.fromRGB(80, 110, 255) or Color3.fromRGB(30, 30, 45)
+	BtnAim.Text = "🎯 SILENT AIM  • " .. (S.SilentAim and "ACTIVO" or "INACTIVO")
+	EtiquetaEstado.Text = S.SilentAim and "✅ Apuntando al más cercano" or "✅ Desactivado"
+end)
+
+BtnChams.MouseButton1Click:Connect(function()
+	S.Chams = not S.Chams
+	BtnChams.BackgroundColor3 = S.Chams and Color3.fromRGB(80, 110, 255) or Color3.fromRGB(30, 30, 45)
+	BtnChams.Text = "🌈 CHAMS  • " .. (S.Chams and "ACTIVO" or "INACTIVO")
+	if S.Chams then
+		AplicarChamsTodos()
+		EtiquetaEstado.Text = "✅ Chams activados"
+	else
+		QuitarTodoChams()
+		EtiquetaEstado.Text = "✅ Chams desactivados"
+	end
+end)
+
+BtnEquipo.MouseButton1Click:Connect(function()
+	S.TeamCheck = not S.TeamCheck
+	BtnEquipo.BackgroundColor3 = S.TeamCheck and Color3.fromRGB(80, 110, 255) or Color3.fromRGB(30, 30, 45)
+	BtnEquipo.Text = "🛡️ NO APUNTAR A EQUIPO  • " .. (S.TeamCheck and "ACTIVO" or "INACTIVO")
+	EtiquetaEstado.Text = S.TeamCheck and "✅ Ignorando compañeros" or "✅ Apuntando a todos"
+end)
+
+local ListaPartes = {"Head", "UpperTorso", "HumanoidRootPart"}
+local IndiceParte = 1
+BtnParte.MouseButton1Click:Connect(function()
+	IndiceParte = IndiceParte + 1
+	if IndiceParte > #ListaPartes then IndiceParte = 1 end
+	S.TargetPart = ListaPartes[IndiceParte]
+	EtiquetaParte.Text = "🎯 Apuntar a: " .. S.TargetPart
+	EtiquetaEstado.Text = "✅ Zona: " .. S.TargetPart
+end)
+
+BtnColor.MouseButton1Click:Connect(function()
+	IndiceColor = IndiceColor + 1
+	if IndiceColor > #ListaColores then IndiceColor = 1 end
+	local Seleccion = ListaColores[IndiceColor]
+	if Seleccion.nombre == "🌈 ARCOÍRIS" then
+		S.RainbowChams = true
+	else
+		S.RainbowChams = false
+		S.ColorChams = Seleccion.valor
+	end
+	EtiquetaColor.Text = "🌈 Color: " .. Seleccion.nombre
+	EtiquetaEstado.Text = "✅ Color: " .. Seleccion.nombre
+end)
+
+BtnMinimizar.MouseButton1Click:Connect(function()
+	S.Minimizado = not S.Minimizado
+	Contenido.Visible = not S.Minimizado
+	Main.Size = S.Minimizado and UDim2.new(0, 290, 0, 55) or UDim2.new(0, 290, 0, 370)
+	BtnMinimizar.Text = S.Minimizado and "+" or "−"
+end)
+
+BtnCerrar.MouseButton1Click:Connect(function()
+	if ConnAim then ConnAim:Disconnect() end
+	if ConnChams then ConnChams:Disconnect() end
+	QuitarTodoChams()
+	Gui:Destroy()
+end)
+
+-- ==============================================
+-- 🔄 BUCLES PRINCIPALES
+-- ==============================================
+ConnAim = RunService.RenderStepped:Connect(BucleAim)
+ConnChams = RunService.RenderStepped:Connect(BucleChams)
+
+print("⚡ ZZXP V1 CARGADO • SILENT AIM INDESTRUCTIBLE 🎯 @unrandom_tk")
